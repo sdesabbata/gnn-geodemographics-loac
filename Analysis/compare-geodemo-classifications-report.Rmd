@@ -1,0 +1,856 @@
+---
+title: "Compare `r params$dlclass_name` to LOAC"
+author: ""
+date: ""
+output: pdf_document
+classoption: 
+  - landscape
+params:
+  output_filename: ../Data/Output/Geodemographic-Clusters/GreaterLondon_2011_OACs-LOAC_SFCM_vGNN_NAGAE.csv
+  dlclass_name: Queens_NAGAE_a
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(magrittr)
+library(knitr)
+library(gmodels)
+library(patchwork)
+library(sf)
+library(spdep)
+library(rgeoda)
+library(tmap)
+
+loac_colours <- c("#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f", "#e5c494", "#b3b3b3")
+```
+
+
+Comparing `r params$dlclass_name` to the London Output Area Classification (LOAC) by Singleton and Longley (2015), available via the [CDRC LOAC Geodata Pack by the ESRC Consumer Data Research Centre](https://data.cdrc.ac.uk/dataset/london-oac-2011/resource/london-output-area-classification) (contains National Statistics data Crown copyright and database right 2015; contains Ordnance Survey data Crown copyright and database right 2015). The data used below include data available via the [CDRC LOAC Geodata Pack by the ESRC Consumer Data Research Centre](https://data.cdrc.ac.uk/dataset/london-oac-2011/resource/london-output-area-classification) (contains National Statistics data Crown copyright and database right 2015; contains Ordnance Survey data Crown copyright and database right 2015) and data derived from the 2011 UK Census data available from [Chris Gale's repository](http://geogale.github.io/2011OAC) (contains National Statistics data Crown copyright and database right 2015).
+
+
+## Load data
+
+```{r, warning=FALSE, message=FALSE}
+loac_shp <- st_read("../Data/Input/London-Output-Area-Classification/LOAC-shapefiles/2011_OAC_Shapefile_GreaterLondon.shp")
+
+output_for_comparison <-
+  read_csv(params$output_filename) %>%
+  rename("dlclass" = params$dlclass_name) %>%
+  select(oa_code, LOAC_supgrp_cd, dlclass) %>%
+  mutate(dlclass = as.character(dlclass)) %>%
+  rename(OA11CD = oa_code)
+
+geodemo_to_compare <-
+  loac_shp %>%
+  select(OA11CD) %>%
+  left_join(output_for_comparison)
+```
+
+\newpage
+
+## Comparison
+
+### Chi-square
+
+To compare the two classification, we use a chi-square analysis, and a visual representation of its cross-tabulation.
+
+```{r, warning=FALSE, message=FALSE}
+geodemo_to_compare %$%
+  gmodels::CrossTable(
+    LOAC_supgrp_cd, dlclass, chisq = TRUE, expected = TRUE, prop.c = FALSE, 
+    prop.t = FALSE, prop.chisq = FALSE, sresid = TRUE, format = "SPSS")
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+geodemo_crosstab_fig <-
+  geodemo_to_compare %>%
+  ggplot(aes(
+    x = LOAC_supgrp_cd, 
+    y = dlclass,
+    colour = LOAC_supgrp_cd
+  )) +
+  geom_count() +
+  scale_colour_manual(values = loac_colours) +
+  coord_fixed(ratio = 1) +
+  theme_bw() +
+  labs(
+    x = "LOAC Supergroups",
+    y = "GraphSAGE-KNN+CorrNet clusters",
+    size = "Count",
+    colour = "LOAC Supergroups"
+  )
+geodemo_crosstab_fig
+```
+
+```{r, warning=FALSE, message=FALSE}
+# Save plot to file
+ggsave(filename = paste0("../Backup/Images/", params$dlclass_name, "__loac__crosstab.png"), plot = geodemo_crosstab_fig)
+```
+
+### Match
+
+Based on the chi-square results and visual analysis above, match the `r params$dlclass_name` clusters to the most similar LOAC class.
+
+
+#### Automatic matching
+
+```{r}
+library(combinat)
+
+find_best_mapping <- function(d_reference, d_options){
+  # Create crosstabulation
+  d_crosstab <- table(d_reference, d_options)
+  # Get all cominations of options
+  v_reference <- unique(d_reference) %>% sort()
+  v_options <- unique(d_options) %>% sort()
+  v_combinations <- combinat::permn(v_options)
+  # Set up
+  current_score <- 0
+  current_combination <- v_combinations[[1]]
+  # Search highest score
+  for (this_combination in v_combinations){
+    this_score <- 
+      d_crosstab[v_reference[1], this_combination[1]] +
+      d_crosstab[v_reference[2], this_combination[2]] +
+      d_crosstab[v_reference[3], this_combination[3]] +
+      d_crosstab[v_reference[4], this_combination[4]] +
+      d_crosstab[v_reference[5], this_combination[5]] +
+      d_crosstab[v_reference[6], this_combination[6]] +
+      d_crosstab[v_reference[7], this_combination[7]] +
+      d_crosstab[v_reference[8], this_combination[8]]
+    # cat("This: ")
+    # cat(v_reference)
+    # cat(" == ")
+    # cat(this_combination)
+    # cat(" >> ")
+    # cat(this_score)
+    # cat("\n")
+    # cat("Currrent: ")
+    # cat(current_combination)
+    # cat(" >> ")
+    # cat(current_score)
+    # cat("\n")
+    # cat("\n")
+    if (this_score > current_score){
+      current_score <- this_score
+      current_combination <- this_combination
+    }
+  }
+  cat("Best match: ")
+  cat(current_combination)
+  cat(" >> ")
+  cat(current_score)
+  cat("\n")
+  
+  write(
+    paste(
+      params$dlclass_name,
+      "Matching OAs",
+      current_score,
+      sep = ", "
+    ),
+    file="compare-geodemo-evaluation-summary--log.csv",
+    append=TRUE
+  )
+  
+  current_combination
+}
+```
+
+
+```{r}
+dlclass_mapping <-
+  geodemo_to_compare %$%
+  find_best_mapping(
+    LOAC_supgrp_cd, dlclass
+  )
+
+dlclass_colours <- loac_colours[match(c("0", "1", "2", "3", "4", "5", "6", "7"), dlclass_mapping)]
+```
+
+```{r, warning=FALSE, message=FALSE}
+geodemo_to_compare <-
+  geodemo_to_compare %>%
+  mutate(
+    supgrp_dlclass_match = case_when(
+      LOAC_supgrp_cd == "A" & dlclass == dlclass_mapping[1] ~ "Matched",
+      LOAC_supgrp_cd == "B" & dlclass == dlclass_mapping[2] ~ "Matched",
+      LOAC_supgrp_cd == "C" & dlclass == dlclass_mapping[3] ~ "Matched",
+      LOAC_supgrp_cd == "D" & dlclass == dlclass_mapping[4] ~ "Matched",
+      LOAC_supgrp_cd == "E" & dlclass == dlclass_mapping[5] ~ "Matched",
+      LOAC_supgrp_cd == "F" & dlclass == dlclass_mapping[6] ~ "Matched",
+      LOAC_supgrp_cd == "G" & dlclass == dlclass_mapping[7] ~ "Matched",
+      LOAC_supgrp_cd == "H" & dlclass == dlclass_mapping[8] ~ "Matched", 
+      TRUE ~ LOAC_supgrp_cd
+    )
+  )
+```
+
+
+### Maps
+
+To allow a borader visual comparison, we use the matched classifications discussed above to create:
+
+- a map of the LOAC;
+- a map of the `r params$dlclass_name` clusters;
+- and a map of the difference between the two classifications, showing only the LOAC classes of the OAs which were re-classified by our framework (i.e., assigned to a cluster other than where most OAs of the same LOAC cluster where assigned to).
+
+```{r, warning=FALSE, message=FALSE, fig.cap="London Output Area Classification by Singleton and Longley (2015). Data source: CDRC LOAC Geodata Pack by the ESRC Consumer Data Research Centre; Contains National Statistics data Crown copyright and database right 2015; Contains Ordnance Survey data Crown copyright and database right 2015"}
+tm_loac <- 
+  tm_shape(geodemo_to_compare) +
+  tm_polygons(
+    "LOAC_supgrp_cd", title = "LOAC\nSupergroups",
+    palette = loac_colours,
+    border.alpha = 0.2
+  )
+tm_loac
+```
+
+```{r, warning=FALSE, message=FALSE, fig.cap="Data source: CDRC LOAC Geodata Pack by the ESRC Consumer Data Research Centre; Contains National Statistics data Crown copyright and database right 2015; Contains Ordnance Survey data Crown copyright and database right 2015"}
+tm_dlclass <- 
+  tm_shape(geodemo_to_compare) +
+  tm_polygons(
+    "dlclass", title = paste0(params$dlclass_name, "\nclusters"),
+    palette = dlclass_colours,
+    border.alpha = 0.2
+  )
+tm_dlclass
+```
+
+```{r, warning=FALSE, message=FALSE, fig.cap="Data source: CDRC LOAC Geodata Pack by the ESRC Consumer Data Research Centre; Contains National Statistics data Crown copyright and database right 2015; Contains Ordnance Survey data Crown copyright and database right 2015"}
+tm_dlclass_not_matched <- 
+  tm_shape(geodemo_to_compare) +
+  tm_polygons(
+    "supgrp_dlclass_match", title = paste0(params$dlclass_name, "\nre-classified\n(LOAC Supergroups)"),
+    palette = c(loac_colours, "#FFFFFF"),
+    border.alpha = 0.2
+  )
+tm_dlclass_not_matched
+```
+
+```{r, warning=FALSE, message=FALSE}
+# Save maps to file
+# tmap_save(tm_dlclass, filename = paste0("../Backup/Images/", params$dlclass_name, "__attempted-match-loac.png"))
+# tmap_save(tm_dlclass_not_matched, filename = paste0("../Backup/Images/", params$dlclass_name, "__not-matched-loac.png"))
+tmap_save(
+  tm_loac, 
+  filename = paste0("../Backup/Images/LOAC.pdf")
+  )
+tmap_save(
+  tm_dlclass, 
+  filename = paste0("../Backup/Images/", params$dlclass_name, "__attempted-match-loac.pdf")
+  )
+tmap_save(
+  tm_dlclass_not_matched, 
+  filename = paste0("../Backup/Images/", params$dlclass_name, "__not-matched-loac.png")
+  )
+```
+
+## Squared Euclidean Distance
+
+To compare the quality of the resulting clusters we explore the Squared Euclidean Distance (SED) for both classification. As the LOAC classification has been created using the 60 variables developed for the 2011 Output Area Classification (2011OAC) from an initial selection 167 census variables, whereas the `r params$dlclass_name` classification has been created using z-scores of the latter (i.e., 167 census variables), we calculate SED scores using both the 167 z-scores and the 2011OAC 60 k-variables.
+
+### SED based on the 167 z-scores
+
+```{r, warning=FALSE, message=FALSE}
+# Long tabulation of values
+geodemo_zscores <- 
+  # Read z-scores
+  read_csv("../Data/Input/Census-Data/GreaterLondon_2011_OAC_Raw_uVariables--zscores-with-colnames.csv") %>%
+  # Join with classifications
+  left_join(output_for_comparison) %>%
+  # Pivot data to longer format for SED calculation
+  pivot_longer(u001:u167)
+```
+```{r, warning=FALSE, message=FALSE}
+# Calculate square distances per variable
+geodemo_zscores <-
+  geodemo_zscores %>%
+  # Add LOAC cluster centroids
+  left_join(
+    geodemo_zscores %>%
+      # Calculate mean for each class and variable
+      select(LOAC_supgrp_cd, name, value) %>%
+      group_by(LOAC_supgrp_cd, name) %>%
+      summarise(LOAC_supgrp_cd_mean = mean(value, na.rm = TRUE)) %>%
+      ungroup() 
+  ) %>%
+  # Add GraphSAGE-KNN+CorrNet cluster centroids
+  left_join(
+    geodemo_zscores %>%
+      # Calculate mean for each class and variable
+      select(dlclass, name, value) %>%
+      group_by(dlclass, name) %>%
+      summarise(dlclass_mean = mean(value, na.rm = TRUE)) %>%
+      ungroup() 
+  ) %>%
+  # Calculate square distances from centroids per variable
+  mutate(
+    LOAC_supgrp_cd_sqdiff = (value - LOAC_supgrp_cd_mean)^2,
+    dlclass_sqdiff = (value - dlclass_mean)^2
+  ) 
+```
+```{r, warning=FALSE, message=FALSE}
+# Calculate SED scores
+geodemo_sed <-
+  # LOAC SED
+  # Sum variable square distances to overall case SED 
+  geodemo_zscores %>%
+  group_by(OA11CD, LOAC_supgrp_cd) %>%
+  summarise(LOAC_supgrp_cd_sed = sum(LOAC_supgrp_cd_sqdiff)) %>%
+  ungroup() %>%
+  left_join(
+    # GraphSAGE-KNN+CorrNet SED
+    # Sum variable square distances to overall case SED 
+    geodemo_zscores %>%
+      group_by(OA11CD, dlclass) %>%
+      summarise(dlclass_sed = sum(dlclass_sqdiff)) %>%
+      ungroup() 
+  )
+```
+
+### SED based on the 2011OAC 60 k-variables
+
+```{r, warning=FALSE, message=FALSE}
+# Long tabulation of values
+geodemo_oac60vars <- 
+  # Read k-variables from LOAC input
+  read_csv("../Data/Input/London-Output-Area-Classification/LOAC_Input_Data.csv") %>%
+  rename(OA11CD = OA) %>%
+  # Join with classifications
+  left_join(output_for_comparison) %>%
+  # Pivot data to loger format for SED calculation
+  pivot_longer(k001_PCT:k060_PCT) 
+```
+```{r, warning=FALSE, message=FALSE}
+# Calculate square distances per variable
+geodemo_oac60vars <-
+  geodemo_oac60vars %>%
+  # Add LOAC cluster centroids
+  left_join(
+    geodemo_oac60vars %>%
+      # Calculate mean for each class and variable
+      select(LOAC_supgrp_cd, name, value) %>%
+      group_by(LOAC_supgrp_cd, name) %>%
+      summarise(LOAC_supgrp_cd_mean = mean(value, na.rm = TRUE)) %>%
+      ungroup() 
+  ) %>%
+  # Add GraphSAGE-KNN+CorrNet cluster centroids
+  left_join(
+    geodemo_oac60vars %>%
+      # Calculate mean for each class and variable
+      select(dlclass, name, value) %>%
+      group_by(dlclass, name) %>%
+      summarise(dlclass_mean = mean(value, na.rm = TRUE)) %>%
+      ungroup() 
+  ) %>%
+  # Calculate square distances from centroids per variable
+  mutate(
+    LOAC_supgrp_cd_sqdiff = (value - LOAC_supgrp_cd_mean)^2,
+    dlclass_sqdiff = (value - dlclass_mean)^2
+  ) 
+```
+```{r, warning=FALSE, message=FALSE}
+# Calculate SED scores
+geodemo_sed_oac60vars <-
+  # LOAC SED
+  # Sum variable square distances to overall case SED 
+  geodemo_oac60vars %>%
+  group_by(OA11CD, LOAC_supgrp_cd) %>%
+  summarise(LOAC_supgrp_cd_sed = sum(LOAC_supgrp_cd_sqdiff)) %>%
+  ungroup() %>%
+  left_join(
+    # GraphSAGE-KNN+CorrNet SED
+    # Sum variable square distances to overall case SED 
+    geodemo_oac60vars %>%
+      group_by(OA11CD, dlclass) %>%
+      summarise(dlclass_sed = sum(dlclass_sqdiff)) %>%
+      ungroup() 
+  )
+```
+
+
+### Boxplots
+
+```{r, warning=FALSE, message=FALSE}
+geodemo_sed_loac_boxplot <-
+  geodemo_sed %>%
+  ggplot(
+    aes(
+      x = LOAC_supgrp_cd,
+      y = LOAC_supgrp_cd_sed,
+      fill = LOAC_supgrp_cd
+    )
+  ) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = loac_colours) +
+  ylim(0, 300) +
+  theme_bw() +
+  labs(
+    x = "",
+    y = "",
+    fill = paste0("LOAC Supergroups\n(and matched\n", params$dlclass_name, "\nclusters)")
+  )
+
+geodemo_sed_dlclass_boxplot <-
+  geodemo_sed %>%
+  ggplot(
+    aes(
+      x = factor(dlclass, levels = dlclass_mapping),
+      y = dlclass_sed,
+      fill = dlclass
+    )
+  ) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = dlclass_colours) +
+  ylim(0, 300) +
+  theme_bw() +
+  labs(
+    x = "",
+    y = "SED (167 z-scores)",
+    fill = paste0(params$dlclass_name, " clusters")
+  ) + 
+  guides(fill = FALSE)
+
+geodemo_sed_oac60vars_loac_boxplot <-
+  geodemo_sed_oac60vars %>%
+  ggplot(
+    aes(
+      x = LOAC_supgrp_cd,
+      y = LOAC_supgrp_cd_sed,
+      fill = LOAC_supgrp_cd
+    )
+  ) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = loac_colours) +
+  ylim(0, 2.5) +
+  theme_bw() +
+  labs(
+    x = "LOAC Supergroups",
+    y = "",
+    fill = "LOAC Supergroups"
+  ) + 
+  guides(fill = FALSE)
+
+geodemo_sed_oac60vars_dlclass_boxplot <-
+  geodemo_sed_oac60vars %>%
+  ggplot(
+    aes(
+      x = factor(dlclass, levels = dlclass_mapping),
+      y = dlclass_sed,
+      fill = dlclass
+    )
+  ) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = dlclass_colours) +
+  ylim(0, 2.5) +
+  theme_bw() +
+  labs(
+    x = paste0(params$dlclass_name, " clusters"),
+    y = "SED (60 k-variables)",
+    fill = paste0(params$dlclass_name, " clusters")
+  ) + 
+  guides(fill = FALSE)
+
+geodemo_sed_boxplot_patchwork <-
+  (
+    geodemo_sed_dlclass_boxplot + 
+    geodemo_sed_loac_boxplot
+  ) / (
+    geodemo_sed_oac60vars_dlclass_boxplot + 
+    geodemo_sed_oac60vars_loac_boxplot
+  )  +
+  plot_layout(guides = 'collect')
+```
+
+```{r, warning=FALSE, message=FALSE}
+# Save plot to file
+ggsave(
+  filename = paste0("../Backup/Images/", params$dlclass_name, "__loac__sed_boxplot.png"), 
+  plot = geodemo_sed_boxplot_patchwork,
+  width = 210,
+  height = 210,
+  units = "mm",
+  )
+```
+
+
+\newpage
+
+### SED comparison
+
+Using the 167 z-scores, the total SED scores are:
+
+- `r geodemo_sed %>% summarise(tss = sum(LOAC_supgrp_cd_sed) / n()) %$% tss %>% round(digits = 1)` for LOAC;
+- `r geodemo_sed %>% summarise(tss = sum(dlclass_sed) / n()) %$% tss %>% round(digits = 1)` for `r params$dlclass_name`.
+
+Using the 60 OAC vars, the total SED scores are:
+
+- `r geodemo_sed_oac60vars %>% summarise(tss = sum(LOAC_supgrp_cd_sed) / n()) %$% tss %>% round(digits = 3)` for LOAC;
+- `r geodemo_sed_oac60vars %>% summarise(tss = sum(dlclass_sed) / n()) %$% tss %>% round(digits = 3)` for `r params$dlclass_name`.
+
+```{r, warning=FALSE, message=FALSE}
+geodemo_sed_boxplot_patchwork
+```
+
+
+```{r}
+write(
+  paste(
+    params$dlclass_name,
+    "SED 167 z-scores",
+    geodemo_sed %>% 
+      summarise(tss = sum(dlclass_sed) / n()) %$% 
+      tss %>% 
+      round(digits = 1),
+    sep = ", "
+  ),
+  file="compare-geodemo-evaluation-summary--log.csv",
+  append=TRUE
+)
+```
+
+```{r}
+write(
+  paste(
+    params$dlclass_name,
+    "SED 60 k-vars",
+    geodemo_sed_oac60vars %>% 
+      summarise(tss = sum(dlclass_sed) / n()) %$% 
+      tss %>% 
+      round(digits = 3),
+    sep = ", "
+  ),
+  file="compare-geodemo-evaluation-summary--log.csv",
+  append=TRUE
+)
+```
+
+
+## Spatial analysis
+
+Create a series of dummy variables which encode the classification as one column per class, with value `1` if the related class has been assigned to that OA, `0` otherwise
+
+```{r}
+geodemo_dummy_vars <-
+  geodemo_to_compare %>%
+    st_drop_geometry() %>%
+    mutate(dummy = 1) %>%
+    pivot_wider(
+      names_from = LOAC_supgrp_cd,
+      names_prefix = "loac_",
+      values_from = dummy,
+      values_fill = 0
+    ) %>%
+    mutate(dummy = 1) %>%
+    pivot_wider(
+      names_from = dlclass,
+      names_prefix = "dlclass_",
+      values_from = dummy,
+      values_fill = 0
+    )
+
+geodemo_to_compare_dummy <-
+  geodemo_to_compare %>%
+  select(OA11CD) %>%
+  left_join(geodemo_dummy_vars)
+```
+
+### Global spatial autocorrelation
+
+Genrate weights
+
+```{r}
+# KNN 8
+# geodemo_to_compare_dummy_weights <-
+#   as(geodemo_to_compare_dummy, "Spatial") %>%
+#   coordinates() %>%
+#   knearneigh(k = 8) %>%
+#   knn2nb() %>%
+#   nb2listw(style="B")
+
+# Queens
+geodemo_to_compare_dummy_weights <-
+  as(geodemo_to_compare_dummy, "Spatial") %>%
+  poly2nb(queen=TRUE) %>%
+  nb2listw(style="B")
+```
+
+Calculate join count statistics as measure of spatial autocorrelation for each class of the two classifications
+
+```{r}
+dummy_columns <- c(
+  paste0("loac_", LETTERS[1:8]), 
+  paste0("dlclass_", 0:7)
+  )
+
+create_new_tibble <- TRUE
+for (c in dummy_columns){
+  
+  tmp_jct<-
+    joincount.test(
+      geodemo_to_compare_dummy %>% pull((!!sym(c))) %>% as_factor(),
+      geodemo_to_compare_dummy_weights
+    ) %>% 
+    extract2(2)
+  
+  if (create_new_tibble) {
+    create_new_tibble <- FALSE
+    
+    joincount_test_1 <- tibble(
+      geodemo_class = c,
+      statistic = tmp_jct$statistic,
+      p_value = tmp_jct$p.value,
+      estimate_stat = tmp_jct$estimate[1],
+      estimate_expct = tmp_jct$estimate[2],
+      estimate_var = tmp_jct$estimate[3],
+      method = tmp_jct$method
+    )
+  
+  } else {
+    
+    joincount_test_1 <-
+      joincount_test_1 %>%
+      add_row(
+        geodemo_class = c,
+        statistic = tmp_jct$statistic,
+        p_value = tmp_jct$p.value,
+        estimate_stat = tmp_jct$estimate[1],
+        estimate_expct = tmp_jct$estimate[2],
+        estimate_var = tmp_jct$estimate[3],
+        method = tmp_jct$method
+      )
+    
+  }
+}
+
+joincount_test_1 %>%
+  kable()
+```
+
+Combine the statistics into a table and plot statistic values to compare correlation between matched classes.
+
+```{r}
+joincount_test_1_summary <-
+  tibble( loac = "A",
+    loac_jc = joincount_test_1 %>% filter(geodemo_class == "loac_A") %>% pull(statistic)  %>% as.numeric(),
+    dlclass_jc = joincount_test_1 %>% filter(geodemo_class == paste0("dlclass_", dlclass_mapping[1])) %>% pull(statistic)  %>% as.numeric(),
+  ) %>%
+  add_row( loac = "B",
+    loac_jc = joincount_test_1 %>% filter(geodemo_class == "loac_B") %>% pull(statistic)  %>% as.numeric(),
+    dlclass_jc = joincount_test_1 %>% filter(geodemo_class == paste0("dlclass_", dlclass_mapping[2])) %>% pull(statistic)  %>% as.numeric(),
+  ) %>%
+  add_row( loac = "C",
+    loac_jc = joincount_test_1 %>% filter(geodemo_class == "loac_C") %>% pull(statistic)  %>% as.numeric(),
+    dlclass_jc = joincount_test_1 %>% filter(geodemo_class == paste0("dlclass_", dlclass_mapping[3])) %>% pull(statistic)  %>% as.numeric(),
+  ) %>%
+  add_row( loac = "D",
+    loac_jc = joincount_test_1 %>% filter(geodemo_class == "loac_D") %>% pull(statistic)  %>% as.numeric(),
+    dlclass_jc = joincount_test_1 %>% filter(geodemo_class == paste0("dlclass_", dlclass_mapping[4])) %>% pull(statistic)  %>% as.numeric(),
+  ) %>%
+  add_row( loac = "E",
+    loac_jc = joincount_test_1 %>% filter(geodemo_class == "loac_E") %>% pull(statistic)  %>% as.numeric(),
+    dlclass_jc = joincount_test_1 %>% filter(geodemo_class == paste0("dlclass_", dlclass_mapping[5])) %>% pull(statistic)  %>% as.numeric(),
+  ) %>%
+  add_row( loac = "F",
+    loac_jc = joincount_test_1 %>% filter(geodemo_class == "loac_F") %>% pull(statistic)  %>% as.numeric(),
+    dlclass_jc = joincount_test_1 %>% filter(geodemo_class == paste0("dlclass_", dlclass_mapping[6])) %>% pull(statistic)  %>% as.numeric(),
+  ) %>%
+  add_row( loac = "G",
+    loac_jc = joincount_test_1 %>% filter(geodemo_class == "loac_G") %>% pull(statistic)  %>% as.numeric(),
+    dlclass_jc = joincount_test_1 %>% filter(geodemo_class == paste0("dlclass_", dlclass_mapping[7])) %>% pull(statistic)  %>% as.numeric(),
+  ) %>%
+  add_row( loac = "H",
+    loac_jc = joincount_test_1 %>% filter(geodemo_class == "loac_H") %>% pull(statistic)  %>% as.numeric(),
+    dlclass_jc = joincount_test_1 %>% filter(geodemo_class == paste0("dlclass_", dlclass_mapping[8])) %>% pull(statistic)  %>% as.numeric(),
+  ) 
+
+joincount_test_1_plot_min <-
+  min(
+    min(joincount_test_1_summary %>% pull(loac_jc)),
+    min(joincount_test_1_summary %>% pull(dlclass_jc))
+  ) * 0.9
+joincount_test_1_plot_max <-
+  max(
+    max(joincount_test_1_summary %>% pull(loac_jc)),
+    max(joincount_test_1_summary %>% pull(dlclass_jc))
+  ) * 1.1
+
+joincount_test_1_plot <-
+  joincount_test_1_summary %>%
+  ggplot(
+    aes(
+      x = loac_jc,
+      y = dlclass_jc,
+      colour = loac
+    )
+  ) +
+  geom_point() +
+  scale_colour_manual(values = loac_colours) +
+  coord_fixed(ratio = 1) +
+  theme_bw() +
+  labs(
+    x = "LOAC Supergroups",
+    y = paste0(params$dlclass_name, " clusters"),
+    colour = "LOAC Supergroups"
+  ) +
+  geom_abline() +
+  xlim(joincount_test_1_plot_min, joincount_test_1_plot_max) +
+  ylim(joincount_test_1_plot_min, joincount_test_1_plot_max)
+
+joincount_test_1_plot
+```
+
+```{r, warning=FALSE, message=FALSE}
+# Save plot to file
+ggsave(
+  filename = paste0("../Backup/Images/", params$dlclass_name, "__loac__joincount_test_1.png"), 
+  plot = joincount_test_1_plot,
+  width = 210,
+  height = 210,
+  units = "mm",
+  )
+```
+
+### Local spatial autocorrelation
+
+Use local measure join count statistic to identify clusters within each class.
+
+```{r}
+#knn_weights_london <- knn_weights(geodemo_to_compare_dummy, 8)
+queen_weights_london <- queen_weights(geodemo_to_compare_dummy)
+
+dummy_columns <- c(
+  paste0("loac_", LETTERS[1:8]), 
+  paste0("dlclass_", 0:7)
+  )
+
+for (c in dummy_columns){
+  #lisa <- local_joincount(knn_weights_london, geodemo_to_compare_dummy[c])
+  lisa <- local_joincount(queen_weights_london, geodemo_to_compare_dummy[c])
+  geodemo_to_compare_dummy[paste0(c, "_cluster")] <- lisa_clusters(lisa)
+  geodemo_to_compare_dummy[paste0(c, "_values")] <- lisa_values(lisa)
+  geodemo_to_compare_dummy[paste0(c, "_pvalues")] <- lisa_pvalues(lisa)
+}
+```
+
+Combine cluster assignments to one column per classification.
+
+```{r}
+geodemo_to_compare_dummy <-
+  geodemo_to_compare_dummy %>%
+  mutate(
+    loac_clustered = NA,
+    dlclass_clustered = NA
+  )
+
+for (c in LETTERS[1:8]){
+  geodemo_to_compare_dummy <-
+    geodemo_to_compare_dummy %>%
+    mutate(
+      loac_clustered = 
+        ifelse(
+          (!!sym(paste0("loac_", c))) == 1, 
+          ifelse(
+            (!!sym(paste0("loac_", c, "_cluster"))) == 1, 
+            c, 
+            loac_clustered
+          ),
+          loac_clustered
+        )
+    ) 
+}
+
+for (c in 0:7){
+  geodemo_to_compare_dummy <-
+    geodemo_to_compare_dummy %>%
+    mutate(
+      dlclass_clustered = 
+        ifelse(
+          (!!sym(paste0("dlclass_", c))) == 1, 
+          ifelse(
+            (!!sym(paste0("dlclass_", c, "_cluster"))) == 1, 
+            c, 
+            dlclass_clustered
+          ),
+          dlclass_clustered
+        )
+    ) 
+}
+
+geodemo_to_compare_dummy %>% 
+  st_drop_geometry() %>% 
+  count(loac_clustered) %>%
+  kable()
+
+geodemo_to_compare_dummy %>% 
+  st_drop_geometry() %>% 
+  filter(!is.na(loac_clustered)) %>%
+  count() %>%
+  kable()
+
+geodemo_to_compare_dummy %>% 
+  st_drop_geometry() %>% 
+  count(dlclass_clustered) %>%
+  kable()
+
+geodemo_to_compare_dummy %>% 
+  st_drop_geometry() %>% 
+  filter(!is.na(dlclass_clustered)) %>%
+  count() %>%
+  kable()
+```
+
+```{r}
+write(
+  paste(
+    params$dlclass_name,
+    "Spatially clustered OAs",
+    geodemo_to_compare_dummy %>% 
+      st_drop_geometry() %>% 
+      filter(!is.na(dlclass_clustered)) %>%
+      count() %>%
+      pull(n),
+    sep = ", "
+  ),
+  file="compare-geodemo-evaluation-summary--log.csv",
+  append=TRUE
+)
+```
+
+
+Plot maps including only OAs which are part of a cluster.
+
+```{r, warning=FALSE, message=FALSE, fig.cap="Data source: CDRC LOAC Geodata Pack by the ESRC Consumer Data Research Centre; Contains National Statistics data Crown copyright and database right 2015; Contains Ordnance Survey data Crown copyright and database right 2015"}
+tm_loac_clustered <- 
+  tm_shape(geodemo_to_compare_dummy) +
+  tm_polygons(
+    "loac_clustered", title = "LOAC\nSupergroups\nspatial clustered",
+    palette = loac_colours,
+    colorNA = "#FFFFFF",
+    border.alpha = 0.2
+  )
+tm_loac_clustered
+```
+```{r, warning=FALSE, message=FALSE, fig.cap="Data source: CDRC LOAC Geodata Pack by the ESRC Consumer Data Research Centre; Contains National Statistics data Crown copyright and database right 2015; Contains Ordnance Survey data Crown copyright and database right 2015"}
+tm_dlclass_clustered <- 
+  tm_shape(geodemo_to_compare_dummy) +
+  tm_polygons(
+    "dlclass_clustered", title = paste0(params$dlclass_name, " clusters\nspatial clustered"),
+    palette = dlclass_colours,
+    colorNA = "#FFFFFF",
+    border.alpha = 0.2
+  )
+tm_dlclass_clustered
+```
+
+\newpage
+
+## References
+
+Singleton A D, Longley P A (2015) The Internal Structure of Greater London: A Comparison of National and Regional Geodemographic Models. Geo: Geography and Environment. Available from: [dx.doi.org/10.1002/geo2.7](https://rgs-ibg.onlinelibrary.wiley.com/doi/10.1002/geo2.7)

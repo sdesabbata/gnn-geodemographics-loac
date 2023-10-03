@@ -1,3 +1,3 @@
 # Analysis
 
-To-do
+This folder includes the code used to generate the evaluation reports comparing our graph autoencoder designs with the official London Output Area Classification and baseline classifications developed using spatial fuzzy c-means. The reports are available under Creative Commons Attribution 4.0 International (CC BY 4.0) licence at [doi.org/10.25392/leicester.data.20503374](https://doi.org/10.25392/leicester.data.20503374). 

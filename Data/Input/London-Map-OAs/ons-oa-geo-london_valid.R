@@ -50,7 +50,7 @@ library(jsonlite)
 cat("Retrieving data\n")
 
 lookup_London_OA_2011 <-
-  read_csv("Output_Area_to_LSOA_to_MSOA_to_Local_Authority_District_(December_2017)_Lookup_with_Area_Classifications_in_Great_Britain.csv") %>% 
+  read_csv("Data/Input/London-Map-OAs/Output_Area_to_LSOA_to_MSOA_to_Local_Authority_District_(December_2017)_Lookup_with_Area_Classifications_in_Great_Britain.csv") %>% 
   filter(RGN11NM == "London") %>% 
   select(OA11CD, LSOA11CD, LSOA11NM, LAD17CD, LAD17NM, RGN11CD, RGN11NM)
 
@@ -118,7 +118,7 @@ lookup_London_OA_2011 %>%
 cat("Write downloaded file\n")
 
 geom_London_OAs %>% 
-  st_write("ons-oa-geo-london_downloaded.geojson")
+  st_write("Data/Input/London-Map-OAs/ons-oa-geo-london_downloaded.geojson")
 
 
 
@@ -129,7 +129,7 @@ if(all(st_is_valid(geom_London_OAs))){
   cat("Geometries are valid, write to file\n")
   
   geom_London_OAs %>% 
-    st_write("ons-oa-geo-london_valid.geojson")
+    st_write("Data/Input/London-Map-OAs/ons-oa-geo-london_valid.geojson")
   
 }else{
   
@@ -137,7 +137,7 @@ if(all(st_is_valid(geom_London_OAs))){
   
   geom_London_OAs %>% 
     st_make_valid() %>% 
-    st_write("ons-oa-geo-london_valid.geojson")
+    st_write("Data/Input/London-Map-OAs/ons-oa-geo-london_valid.geojson")
   
 }
 
@@ -145,6 +145,6 @@ if(all(st_is_valid(geom_London_OAs))){
 
 # To BNG ------------------------------------------------------------------
 
-st_read("ons-oa-geo-london_valid.geojson") %>% 
+st_read("Data/Input/London-Map-OAs/ons-oa-geo-london_valid.geojson") %>% 
   st_transform(27700) %>% 
-  st_write("ons-oa-geo-london_valid_BNG.geojson")
+  st_write("Data/Input/London-Map-OAs/ons-oa-geo-london_valid_BNG.geojson")

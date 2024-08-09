@@ -5,4 +5,8 @@ To reproduce the results, copy in this folder the 167 variables from the 2011 UK
 
 ## Data preparation 
 
-To-do
+Run the scripts in the following order, following the instructions in the header of the script
+
+1. GreaterLondon_2011_OAC_Raw_uVariables.R
+2. 2011OAC-data-norm-and-zscores.R
+3. 2011OAC-zscores-to-PCA60.R

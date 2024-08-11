@@ -18,6 +18,9 @@
 #
 # http://geogale.github.io/2011OAC
 #
+# Copy the contents of the unzipped `2011 OAC 167 Variables/` folder
+# in the folder `Data/Input/Census-Data/`
+#
 #
 # Author: Stef De Sabbata
 # Date: 09 August 2024
@@ -28,7 +31,7 @@
 library(tidyverse)
 library(sf)
 
-read_csv("Data/Input/Census-Data/2011 OAC 167 Variables/2011_OAC_Raw_uVariables.csv") %>% 
+read_csv("Data/Input/Census-Data/2011_OAC_Raw_uVariables.csv") %>% 
   semi_join(
     st_read("Data/Input/London-Map-OAs/ons-oa-geo-london_valid.geojson") %>% 
       st_drop_geometry(),

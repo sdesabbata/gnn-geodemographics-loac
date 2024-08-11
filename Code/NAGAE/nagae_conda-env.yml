@@ -1,0 +1,19 @@
+# Minimal conda env to run the NAGAE model on CPU
+#
+# conda env create -f nagae_conda-env.yml
+#
+name: nagae_conda-env
+channels:
+  - conda-forge
+  - pytorch
+  - pyg
+dependencies:
+  - python
+  - pytorch
+  - torchvision
+  - torchaudio
+  - cpuonly
+  - pyg::pyg
+  - pyg::pytorch-sparse
+  - geopandas
+  - pysal

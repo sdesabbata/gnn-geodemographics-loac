@@ -61,7 +61,7 @@ torch.manual_seed(random_seed)
 # ----------------  #
 
 # Load the census data (i.e., the node attributes)
-census_data = pd.read_csv("data/input/Census-Data/GreaterLondon_2011_OAC_Raw_uVariables--zscores-with-colnames.csv")
+census_data = pd.read_csv("Data/Input/Census-Data/GreaterLondon_2011_OAC_Raw_uVariables--zscores-with-colnames.csv")
 census_data = census_data.set_index("OA11CD")
 
 # Create a dictionary to map the OA index to the node index
@@ -73,8 +73,8 @@ mapping_index_OA_df = pd.DataFrame.from_dict(mapping_index_OA, orient="index", c
 mapping_index_OA_df.head(n=15)
 
 # Load the geometries of the spatial units
-# spatial_data_file = "data/input/London-Map-OAs/ons-oa-geo-london_valid.geojson"
-spatial_data_file = "data/input/London-Map-OAs/ons-oa-geo-london_valid_BNG.geojson"
+# spatial_data_file = "Data/Input/London-Map-OAs/ons-oa-geo-london_valid.geojson"
+spatial_data_file = "Data/Input/London-Map-OAs/ons-oa-geo-london_valid_BNG.geojson"
 spatial_data_df = gpd.read_file(spatial_data_file)
 
 
@@ -172,7 +172,7 @@ os.mkdir(bulk_storage_directory + "__" + tests_id + "/output")
 
 results_timestamp_now = str(time.time()).replace(".", "_")
 results_model_name = "results_nagae__"
-results_file = open("data/output/" + results_model_name + results_timestamp_now + ".csv", "a")
+results_file = open("Data/Output/" + results_model_name + results_timestamp_now + ".csv", "a")
 results_file.writelines(
     "spatial_graph, layers_features_in, layers_features_encoder_prep, layers_features_encoder_gatc, " +
     "layers_features_encoder_post, layers_features_decoder_attr, num_gat_heads, negative_slope, dropout, " +
@@ -225,7 +225,7 @@ for test in tests:
         f.writelines(s + "\n")
         print(s)
 
-    log_file = open("data/output/" + output_labels_colname + "__setup.txt", "a")
+    log_file = open("Data/Output/" + output_labels_colname + "__setup.txt", "a")
     log_this("\n\n---\n", log_file)
     log_this(test_string, log_file)
     log_this(timestamp_now, log_file)

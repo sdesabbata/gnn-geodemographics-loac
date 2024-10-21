@@ -206,3 +206,32 @@ vignettes/*.pdf
 # Ignore tmp folder
 tmp
 runs
+
+# Local directories
+*/local_directories.py
+Backup/
+# Ignore data files
+!Data/Input/Census-Data/
+Data/Input/Census-Data/*
+!Data/Input/Census-Data/README.md
+!Data/Input/Census-Data/*.R
+#
+!Data/Input/London-Map-OAs/
+Data/Input/London-Map-OAs/*
+!Data/Input/London-Map-OAs/README.md
+!Data/Input/London-Map-OAs/*.R
+#
+!Data/Input/London-Output-Area-Classification/
+Data/Input/London-Output-Area-Classification/*
+!Data/Input/London-Output-Area-Classification/README.md
+!Data/Input/London-Output-Area-Classification/*.R
+#
+!Data/Output/Geodemographics-Clusters/
+Data/Output/*__setup.txt
+Data/Output/results_*.csv
+#
+!Analysis/GeodemoComparisonReports/
+Analysis/GeodemoComparisonReports/*.pdf
+# HPC
+sbatch/
+qsub/
